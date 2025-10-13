@@ -10,6 +10,7 @@ import torch._dynamo.test_case
 
 # for some reason importing functional collectives after dynamo breaks collectives handling!
 import torch.distributed._functional_collectives as _functional_collectives
+import torch.fx as fx
 from torch._C import FileCheck
 from torch._dynamo.utils import counters, same
 from torch._inductor.utils import run_and_get_code, run_and_get_triton_code
@@ -886,6 +887,106 @@ class TestComputeCommReorderingBucketing(TestComputeCommReorderingMultiProc):
 
             correct = func(a, b, c, d, ranks=ranks)
             self.assertTrue(same(test_out, correct))
+
+
+def get_toy_model(device_type: str):
+    """
+    Helper to construct a small multi-layer ToyModel
+    """
+
+    class ToyBlock(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.wq = torch.nn.Linear(4, 4)
+            self.wk = torch.nn.Linear(4, 4)
+            self.proj = torch.nn.Linear(4, 4)
+
+        def forward(self, x):
+            attn = self.wq(x) + self.wk(x)
+            return self.proj(torch.nn.functional.relu(attn))
+
+    class ToyModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layers = torch.nn.ModuleList([ToyBlock() for _ in range(2)])
+            self.norm = torch.nn.LayerNorm(4)
+
+        def forward(self, x):
+            for blk in self.layers:
+                x = blk(x)
+            return self.norm(x)
+
+    model = ToyModel().to(device_type)
+    return model
+
+
+class TestManualOverlapBucketing(TestComputeCommReorderingMultiProc):
+    """
+    Tests for manual overlap scheduling and subgraph utilities.
+    """
+
+    @unittest.skipIf(not HAS_GPU, "Inductor+gpu needs triton and recent GPU arch")
+    def test_find_key_nodes_and_make_subgraph(self):
+        from torch._inductor.fx_passes.overlap_manual_scheduling import (
+            _find_key_nodes,
+            _make_subgraph,
+        )
+
+        # Build a synthetic FX graph with a mixture of compute and communication
+        g = fx.Graph()
+        a = g.placeholder("a")
+        b = g.placeholder("b")
+        mm = g.call_function(torch.ops.aten.mm.default, (a, b))
+        relu = g.call_function(torch.ops.aten.relu.default, (mm,))
+        ar = g.call_function(
+            torch.ops._c10d_functional.all_reduce.default, (relu, "sum", "0")
+        )
+        w = g.call_function(torch.ops._c10d_functional.wait_tensor.default, (ar,))
+        out = g.call_function(torch.ops.aten.add.default, (w, relu))
+        g.output(out)
+
+        roots, outs = _find_key_nodes([mm, relu, ar, w, out])
+        self.assertIn(a, roots)
+        self.assertIn(b, roots)
+        self.assertIn(out, outs)
+
+        # Extract subgraph containing only compute + collective nodes
+        sub = _make_subgraph([mm, relu, ar, w])
+        self.assertIsInstance(sub, fx.Graph)
+
+        # Compare expected graph exactly
+        self.assertExpectedInline(
+            str(sub),
+            """\
+graph():
+    %a : [num_users=1] = placeholder[target=a]
+    %b : [num_users=1] = placeholder[target=b]
+    %mm_default : [num_users=1] = call_function[target=torch.ops.aten.mm.default](args = (%a, %b), kwargs = {})
+    %relu_default : [num_users=1] = call_function[target=torch.ops.aten.relu.default](args = (%mm_default,), kwargs = {})
+    %all_reduce_default : [num_users=1] = call_function[target=torch.ops._c10d_functional.all_reduce.default](args = (%relu_default, sum, 0), kwargs = {})
+    %wait_tensor_default : [num_users=1] = call_function[target=torch.ops._c10d_functional.wait_tensor.default](args = (%all_reduce_default,), kwargs = {})
+    return [wait_tensor_default]""",
+        )
+
+    @unittest.skipIf(not HAS_GPU, "Inductor+gpu needs triton and recent GPU arch")
+    def test_make_graph_view_and_get_subgraph_by_path(self):
+        from torch._inductor.fx_passes.overlap_manual_scheduling import (
+            get_subgraph_by_path,
+            make_graph_view,
+        )
+
+        model = get_toy_model(device_type)
+        gm = fx.symbolic_trace(model)
+        graph_view = make_graph_view(gm.graph)
+        # Fetch subgraph for first transformer layer
+        sub_nodes = get_subgraph_by_path(graph_view, "layers.0.wq")
+        self.assertEqual([n.name for n in sub_nodes], ["layers_0_wq"])
+
+        # Fetch multiple paths at once
+        multi_nodes = get_subgraph_by_path(graph_view, ["layers.0.wq", "layers.0.proj"])
+        self.assertEqual(
+            [n.name for n in multi_nodes], ["layers_0_wq", "layers_0_proj"]
+        )
 
 
 if __name__ == "__main__":
