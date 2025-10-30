@@ -142,7 +142,10 @@ class _ConvNd(Module):
             self._reversed_padding_repeated_twice = [0, 0] * len(kernel_size)
             if padding == "same":
                 for d, k, i in zip(
-                    dilation, kernel_size, range(len(kernel_size) - 1, -1, -1)
+                    dilation,
+                    kernel_size,
+                    range(len(kernel_size) - 1, -1, -1),
+                    strict=False,
                 ):
                     total_padding = d * (k - 1)
                     left_pad = total_padding // 2
@@ -363,7 +366,7 @@ class Conv1d(_ConvNd):
                 self.dilation,
                 self.groups,
             )
-        # pyrefly: ignore  # no-matching-overload
+
         return F.conv1d(
             input, weight, bias, self.stride, self.padding, self.dilation, self.groups
         )
@@ -541,7 +544,7 @@ class Conv2d(_ConvNd):
                 self.dilation,
                 self.groups,
             )
-        # pyrefly: ignore  # no-matching-overload
+
         return F.conv2d(
             input, weight, bias, self.stride, self.padding, self.dilation, self.groups
         )
@@ -711,7 +714,7 @@ class Conv3d(_ConvNd):
                 self.dilation,
                 self.groups,
             )
-        # pyrefly: ignore  # no-matching-overload
+
         return F.conv3d(
             input, weight, bias, self.stride, self.padding, self.dilation, self.groups
         )
@@ -900,6 +903,23 @@ class ConvTranspose1d(_ConvTransposeNd):
                          If :attr:`bias` is ``True``, then the values of these weights are
                          sampled from :math:`\mathcal{U}(-\sqrt{k}, \sqrt{k})` where
                          :math:`k = \frac{groups}{C_\text{out} * \text{kernel\_size}}`
+
+    Examples::
+
+        >>> # With square kernels and equal stride
+        >>> m = nn.ConvTranspose1d(16, 33, 3, stride=2)
+        >>> input = torch.randn(20, 16, 50)
+        >>> output = m(input)
+        >>> # exact output size can be also specified as an argument
+        >>> input = torch.randn(1, 16, 12)
+        >>> downsample = nn.Conv1d(16, 16, 3, stride=2, padding=1)
+        >>> upsample = nn.ConvTranspose1d(16, 16, 3, stride=2, padding=1)
+        >>> h = downsample(input)
+        >>> h.size()
+        torch.Size([1, 16, 6])
+        >>> output = upsample(h, output_size=input.size())
+        >>> output.size()
+        torch.Size([1, 16, 12])
 
     .. _`here`:
         https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
@@ -1497,7 +1517,7 @@ class LazyConv1d(_LazyConvXdMixin, Conv1d):  # type: ignore[misc]
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
-        # pyrefly: ignore  # bad-argument-type
+        # pyrefly: ignore [bad-argument-type]
         super().__init__(
             0,
             0,
@@ -1512,11 +1532,11 @@ class LazyConv1d(_LazyConvXdMixin, Conv1d):  # type: ignore[misc]
             padding_mode,
             **factory_kwargs,
         )
-        # pyrefly: ignore  # bad-override, bad-argument-type
+        # pyrefly: ignore [bad-override, bad-argument-type]
         self.weight = UninitializedParameter(**factory_kwargs)
         self.out_channels = out_channels
         if bias:
-            # pyrefly: ignore  # bad-override, bad-argument-type
+            # pyrefly: ignore [bad-override, bad-argument-type]
             self.bias = UninitializedParameter(**factory_kwargs)
 
     def _get_num_spatial_dims(self) -> int:
@@ -1569,7 +1589,7 @@ class LazyConv2d(_LazyConvXdMixin, Conv2d):  # type: ignore[misc]
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
-        # pyrefly: ignore  # bad-argument-type
+        # pyrefly: ignore [bad-argument-type]
         super().__init__(
             0,
             0,
@@ -1584,11 +1604,11 @@ class LazyConv2d(_LazyConvXdMixin, Conv2d):  # type: ignore[misc]
             padding_mode,
             **factory_kwargs,
         )
-        # pyrefly: ignore  # bad-override, bad-argument-type
+        # pyrefly: ignore [bad-override, bad-argument-type]
         self.weight = UninitializedParameter(**factory_kwargs)
         self.out_channels = out_channels
         if bias:
-            # pyrefly: ignore  # bad-override, bad-argument-type
+            # pyrefly: ignore [bad-override, bad-argument-type]
             self.bias = UninitializedParameter(**factory_kwargs)
 
     def _get_num_spatial_dims(self) -> int:
@@ -1642,7 +1662,7 @@ class LazyConv3d(_LazyConvXdMixin, Conv3d):  # type: ignore[misc]
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
-        # pyrefly: ignore  # bad-argument-type
+        # pyrefly: ignore [bad-argument-type]
         super().__init__(
             0,
             0,
@@ -1657,11 +1677,11 @@ class LazyConv3d(_LazyConvXdMixin, Conv3d):  # type: ignore[misc]
             padding_mode,
             **factory_kwargs,
         )
-        # pyrefly: ignore  # bad-override, bad-argument-type
+        # pyrefly: ignore [bad-override, bad-argument-type]
         self.weight = UninitializedParameter(**factory_kwargs)
         self.out_channels = out_channels
         if bias:
-            # pyrefly: ignore  # bad-override, bad-argument-type
+            # pyrefly: ignore [bad-override, bad-argument-type]
             self.bias = UninitializedParameter(**factory_kwargs)
 
     def _get_num_spatial_dims(self) -> int:
@@ -1713,7 +1733,7 @@ class LazyConvTranspose1d(_LazyConvXdMixin, ConvTranspose1d):  # type: ignore[mi
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
-        # pyrefly: ignore  # bad-argument-type
+        # pyrefly: ignore [bad-argument-type]
         super().__init__(
             0,
             0,
@@ -1729,11 +1749,11 @@ class LazyConvTranspose1d(_LazyConvXdMixin, ConvTranspose1d):  # type: ignore[mi
             padding_mode,
             **factory_kwargs,
         )
-        # pyrefly: ignore  # bad-override, bad-argument-type
+        # pyrefly: ignore [bad-override, bad-argument-type]
         self.weight = UninitializedParameter(**factory_kwargs)
         self.out_channels = out_channels
         if bias:
-            # pyrefly: ignore  # bad-override, bad-argument-type
+            # pyrefly: ignore [bad-override, bad-argument-type]
             self.bias = UninitializedParameter(**factory_kwargs)
 
     def _get_num_spatial_dims(self) -> int:
@@ -1785,7 +1805,7 @@ class LazyConvTranspose2d(_LazyConvXdMixin, ConvTranspose2d):  # type: ignore[mi
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
-        # pyrefly: ignore  # bad-argument-type
+        # pyrefly: ignore [bad-argument-type]
         super().__init__(
             0,
             0,
@@ -1801,11 +1821,11 @@ class LazyConvTranspose2d(_LazyConvXdMixin, ConvTranspose2d):  # type: ignore[mi
             padding_mode,
             **factory_kwargs,
         )
-        # pyrefly: ignore  # bad-override, bad-argument-type
+        # pyrefly: ignore [bad-override, bad-argument-type]
         self.weight = UninitializedParameter(**factory_kwargs)
         self.out_channels = out_channels
         if bias:
-            # pyrefly: ignore  # bad-override, bad-argument-type
+            # pyrefly: ignore [bad-override, bad-argument-type]
             self.bias = UninitializedParameter(**factory_kwargs)
 
     def _get_num_spatial_dims(self) -> int:
@@ -1857,7 +1877,7 @@ class LazyConvTranspose3d(_LazyConvXdMixin, ConvTranspose3d):  # type: ignore[mi
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
-        # pyrefly: ignore  # bad-argument-type
+        # pyrefly: ignore [bad-argument-type]
         super().__init__(
             0,
             0,
@@ -1873,11 +1893,11 @@ class LazyConvTranspose3d(_LazyConvXdMixin, ConvTranspose3d):  # type: ignore[mi
             padding_mode,
             **factory_kwargs,
         )
-        # pyrefly: ignore  # bad-override, bad-argument-type
+        # pyrefly: ignore [bad-override, bad-argument-type]
         self.weight = UninitializedParameter(**factory_kwargs)
         self.out_channels = out_channels
         if bias:
-            # pyrefly: ignore  # bad-override, bad-argument-type
+            # pyrefly: ignore [bad-override, bad-argument-type]
             self.bias = UninitializedParameter(**factory_kwargs)
 
     def _get_num_spatial_dims(self) -> int:

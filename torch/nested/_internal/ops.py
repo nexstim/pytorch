@@ -46,12 +46,12 @@ def _outer_to_inner_dim(ndim, dim, ragged_dim, canonicalize=False):
     if canonicalize:
         dim = canonicalize_dims(ndim, dim)
 
-    assert dim >= 0 and dim < ndim  # pyrefly: ignore  # unsupported-operation
+    assert dim >= 0 and dim < ndim  # pyrefly: ignore [unsupported-operation]
 
     # Map dim=0 (AKA batch dim) -> packed dim i.e. outer ragged dim - 1.
     # For other dims, subtract 1 to convert to inner space.
     return (
-        # pyrefly: ignore  # unsupported-operation
+        # pyrefly: ignore [unsupported-operation]
         ragged_dim - 1 if dim == 0 else dim - 1
     )
 
@@ -1112,7 +1112,7 @@ def chunk_default(func, *args, **kwargs):
         # the input number; it can be counter-intuitive, but it matches dense behavior.
         return [
             NestedTensor(values=chunk_values[i], **(nested_kwargs[i]))
-            for i in range(0, len(chunk_values))
+            for i in range(len(chunk_values))
         ]
     else:
         return [
@@ -1232,7 +1232,7 @@ def unsqueeze_default(func, *args, **kwargs):
     return NestedTensor(func(values, **new_kwargs), **output_kwargs)
 
 
-@register_jagged_func(torch.ops.aten.cat.default, "tensors: any, dim: any")
+@register_jagged_func(torch.ops.aten.cat.default, "tensors: any, dim: any?")
 def cat_default(func, *args, **kwargs):
     _, new_kwargs = normalize_function(  # type: ignore[misc]
         func, args=args, kwargs=kwargs, normalize_to_only_use_kwargs=True
@@ -2008,7 +2008,7 @@ def index_put_(func, *args, **kwargs):
     else:
         lengths = inp.lengths()
     torch._assert_async(
-        # pyrefly: ignore  # no-matching-overload
+        # pyrefly: ignore [no-matching-overload]
         torch.all(indices[inp._ragged_idx] < lengths),
         "Some indices in the ragged dimension are out of bounds!",
     )
@@ -2275,7 +2275,7 @@ def value_selecting_reduction_backward_default(func, *args, **kwargs):
     return NestedTensor(func(**new_kwargs), **output_kwargs)
 
 
-@register_jagged_func(torch.ops.aten.stack.default, "tensors: any, dim: any")
+@register_jagged_func(torch.ops.aten.stack.default, "tensors: any, dim: any?")
 def stack_default(func, *args, **kwargs):
     _, new_kwargs = normalize_function(  # type: ignore[misc]
         func, args=args, kwargs=kwargs, normalize_to_only_use_kwargs=True

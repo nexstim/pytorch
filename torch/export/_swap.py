@@ -107,11 +107,11 @@ def _try_remove_connecting_pytrees(curr_module_node: torch.fx.Node) -> None:
             return
 
         if not (
-            # pyrefly: ignore  # missing-attribute
+            # pyrefly: ignore [missing-attribute]
             arg.op == "call_function"
-            # pyrefly: ignore  # missing-attribute
+            # pyrefly: ignore [missing-attribute]
             and arg.target == operator.getitem
-            # pyrefly: ignore  # missing-attribute
+            # pyrefly: ignore [missing-attribute]
             and arg.args[1] == i
         ):
             log.debug(
@@ -374,8 +374,8 @@ def _fix_input_output_signature(
         assert signature.in_spec.num_children == 2
         arg_spec = signature.in_spec.children_specs[0]
         kwarg_spec = signature.in_spec.children_specs[1]
-        assert arg_spec.type == tuple
-        assert kwarg_spec.type == dict
+        assert arg_spec.type is tuple
+        assert kwarg_spec.type is dict
         for i in range(arg_spec.num_children):
             forward_arg_names.append(f"arg_{i}")
         forward_arg_names.extend(kwarg_spec.context)
