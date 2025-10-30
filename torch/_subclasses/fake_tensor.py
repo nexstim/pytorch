@@ -2117,20 +2117,6 @@ class FakeTensorMode(TorchDispatchMode):
                 f"args={args}, kwargs={kwargs}"
             ) from e
 
-    def _clear_memos(self) -> None:
-        """
-        Reinitializes all weakref memos
-        """
-        self.fake_tensor_converter.meta_converter.tensor_memo = (
-            weakref.WeakValueDictionary()
-        )
-        self.fake_tensor_converter.meta_converter.describer.lookup_tensor = (
-            WeakIdKeyDictionary()
-        )
-        self.fake_tensor_converter.meta_converter.describer.lookup_storage = (
-            WeakIdKeyDictionary()
-        )
-
     def dispatch(
         self,
         func: OpOverload,
