@@ -1054,9 +1054,10 @@ def tracing(
         if (
             context is not None
             and context.fake_mode is not None
-            and context.fake_mode.shape_env is not None
         ):
-            context.fake_mode.shape_env.cleanup()
+            if context.fake_mode.shape_env is not None:
+                context.fake_mode.shape_env.cleanup()
+            context.fake_mode.fake_tensor_converter.meta_converter._clear_memos()
         _TLS.tracing_context = old_context
 
 
