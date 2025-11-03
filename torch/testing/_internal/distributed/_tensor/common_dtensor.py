@@ -14,9 +14,11 @@ from typing import Any, cast, Optional, TypeVar, Union
 
 import torch
 import torch.distributed as dist
+import torch.distributed.tensor._random as random
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributed._local_tensor import (
+    _current_rank,
     LocalIntNode,
     LocalTensor,
     LocalTensorMode,
@@ -723,10 +725,24 @@ class LocalDTensorTestBase(DTensorTestBase):
     def tearDown(self) -> None:
         super().tearDown()
         torch.autograd._enable_record_function(True)
+        # Reset the global RNG tracker to ensure clean state between tests
+        random._rng_tracker = None
+        # Reset per-rank seeds to ensure clean state between tests
+        random._per_rank_seeds.clear()
+        # Reset the current rank to ensure clean state between tests
+        if hasattr(_current_rank, "rank"):
+            del _current_rank.rank
 
     @property
     def rank(self):
-        return torch.SymInt(LocalIntNode({r: r for r in range(self.world_size)}))
+        from torch.distributed._local_tensor import _current_rank
+
+        current_rank = getattr(_current_rank, "rank", None)
+
+        if current_rank is not None:
+            return current_rank
+        else:
+            return torch.SymInt(LocalIntNode({r: r for r in range(self.world_size)}))
 
     @rank.setter
     def rank(self, rank):

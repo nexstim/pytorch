@@ -6,6 +6,12 @@ import itertools
 import torch
 import torch.distributed._functional_collectives as funcol
 import torch.distributed.tensor._random as random
+from torch.distributed._local_tensor import (
+    _current_rank,
+    local_tensor_mode,
+    LocalIntNode,
+    maybe_run_for_local_tensor,
+)
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.distributed_c10d import broadcast_object_list
 from torch.distributed.fsdp import fully_shard
@@ -26,6 +32,7 @@ from torch.distributed.tensor.debug import CommDebugMode
 from torch.distributed.tensor.parallel import ColwiseParallel, parallelize_module
 from torch.testing._internal.common_utils import run_tests
 from torch.testing._internal.distributed._tensor.common_dtensor import (
+    create_local_tensor_test_class,
     DTensorTestBase,
     skip_if_lt_x_gpu,
     skip_unless_torch_gpu,
@@ -34,8 +41,32 @@ from torch.testing._internal.distributed._tensor.common_dtensor import (
 from torch.utils._typing_utils import not_none
 
 
-def get_generator_seed_for_device_type(device_type: str) -> int:
+def get_generator_seed_for_device_type(device_type: str):
     device_module = torch.get_device_module(device_type)
+
+    lm = local_tensor_mode()
+    if lm is not None and not lm._disable:
+        if hasattr(random, "_per_rank_seeds") and random._per_rank_seeds:
+            if len(set(random._per_rank_seeds.values())) == 1:
+                return next(iter(random._per_rank_seeds.values()))
+            return torch.SymInt(LocalIntNode(random._per_rank_seeds))
+
+        # no stored seeds, read from device generator per-rank
+        # (tests that don't use manual_seed)
+        per_rank_seeds = {}
+        with lm.disable():
+            for r in lm.ranks:
+                _current_rank.rank = r
+                per_rank_seeds[r] = (
+                    device_module.get_rng_state()[:8].view(torch.int64).item()
+                )
+                if hasattr(_current_rank, "rank"):
+                    delattr(_current_rank, "rank")
+
+        if len(set(per_rank_seeds.values())) == 1:
+            return next(iter(per_rank_seeds.values()))
+        return torch.SymInt(LocalIntNode(per_rank_seeds))
+
     return device_module.get_rng_state()[:8].view(torch.int64).item()
 
 
@@ -390,13 +421,17 @@ class DistTensorRandomOpTest(DTensorTestBase):
             group=WORLD,
         )
 
-        # verify the weights are initialized differently on all ranks
-        for other_rank in range(self.world_size):
-            if self.rank != other_rank:
-                self.assertNotEqual(
-                    spmd_dtensor.to_local(),
-                    tensor_gather[2 * other_rank : 2 * (other_rank + 1), :],
-                )
+        @maybe_run_for_local_tensor
+        def compute(tensor_gather, spmd_dtensor):
+            # verify the weights are initialized differently on all ranks
+            for other_rank in range(self.world_size):
+                if self.rank != other_rank:
+                    self.assertNotEqual(
+                        spmd_dtensor,
+                        tensor_gather[2 * other_rank : 2 * (other_rank + 1), :],
+                    )
+
+        compute(tensor_gather, spmd_dtensor.to_local())
 
     @with_comms
     @skip_unless_torch_gpu
@@ -454,16 +489,20 @@ class DistTensorRandomOpTest(DTensorTestBase):
                 dtensor.to_local(), gather_dim=0, group=(device_mesh, 0)
             )
 
-            # compare with local tensors from other ranks
-            self_slice = slice(4 * self.rank, 4 * self.rank + 4)
-            for other_rank in range(self.world_size):
-                if self.rank != other_rank:
-                    # other rank should have a different local tensor for shard placement
-                    other_slice = slice(4 * other_rank, 4 * other_rank + 4)
-                    self.assertNotEqual(
-                        local_tensor[self_slice, :],
-                        local_tensor[other_slice, :],
-                    )
+            @maybe_run_for_local_tensor
+            def compute(local_tensor):
+                # compare with local tensors from other ranks
+                self_slice = slice(4 * self.rank, 4 * self.rank + 4)
+                for other_rank in range(self.world_size):
+                    if self.rank != other_rank:
+                        # other rank should have a different local tensor for shard placement
+                        other_slice = slice(4 * other_rank, 4 * other_rank + 4)
+                        self.assertNotEqual(
+                            local_tensor[self_slice, :],
+                            local_tensor[other_slice, :],
+                        )
+
+            compute(local_tensor)
 
             # we should set manual seed to the same value on all SPMD ranks
             torch.manual_seed(0)
@@ -657,6 +696,18 @@ class DistTensorRandomOpsTest3D(DTensorTestBase):
                     weight_gather[other_rank_dim_0_start:other_rank_dim_0_end, :],
                 )
 
+
+DistTensorRandomInitTestWithLocalTensor = create_local_tensor_test_class(
+    DistTensorRandomInitTest,
+)
+
+DistTensorRandomOpTestWithLocalTensor = create_local_tensor_test_class(
+    DistTensorRandomOpTest,
+)
+
+DistTensorRandomOpsTest3DWithLocalTensor = create_local_tensor_test_class(
+    DistTensorRandomOpsTest3D,
+)
 
 if __name__ == "__main__":
     run_tests()
