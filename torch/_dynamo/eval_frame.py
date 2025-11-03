@@ -77,7 +77,7 @@ from torch.export.dynamic_shapes import (
     _RelaxedConstraint,
     Constraint,
 )
-from torch.fx import GraphModule
+from torch.fx import GraphModule, traceback as fx_traceback
 from torch.fx.experimental._dynamism import (
     clone_and_convert_to_meta,
     track_dynamism_across_examples,
@@ -1126,7 +1126,18 @@ class DisableContext(_TorchDynamoContext):
             try:
                 _maybe_set_eval_frame(_callback_from_stance(self.callback))
                 try:
-                    return fn(*args, **kwargs)
+                    with fx_traceback.annotate(
+                        {
+                            "_torchdynamo_disable": True,
+                            "_torchdynamo_disable_recursive": True,
+                            "_torchdynamo_disable_method": getattr(
+                                fn, "__name__", type(fn).__name__
+                            ),
+                        }
+                        if torch.compiler.is_exporting()
+                        else {}
+                    ):
+                        return fn(*args, **kwargs)
                 finally:
                     set_eval_frame(None)
             finally:

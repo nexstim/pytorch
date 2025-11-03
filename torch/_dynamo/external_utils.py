@@ -28,6 +28,7 @@ from typing_extensions import deprecated, ParamSpec
 
 import torch
 import torch.utils._pytree as pytree
+from torch.fx import traceback as fx_traceback
 
 
 try:
@@ -196,7 +197,18 @@ def get_nonrecursive_disable_wrapper(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     # this function is in external_utils so that convert_frame doesn't skip it.
     @functools.wraps(fn)
     def nonrecursive_disable_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        return fn(*args, **kwargs)
+        with fx_traceback.annotate(
+            {
+                "_torchdynamo_disable": True,
+                "_torchdynamo_disable_recursive": False,
+                "_torchdynamo_disable_method": getattr(
+                    fn, "__name__", type(fn).__name__
+                ),
+            }
+            if torch.compiler.is_exporting()
+            else {}
+        ):
+            return fn(*args, **kwargs)
 
     return nonrecursive_disable_wrapper
 
