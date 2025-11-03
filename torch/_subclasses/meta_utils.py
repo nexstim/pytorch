@@ -872,7 +872,7 @@ class MetaConverter(Generic[_TensorT]):
         """
         Clears all weakref memos
         """
-        self.tensor_memo .clear()
+        self.tensor_memo.clear()
         self.describer.lookup_tensor.clear()
         self.describer.lookup_storage.clear()
 
