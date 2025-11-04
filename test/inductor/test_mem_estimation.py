@@ -3,7 +3,8 @@
 import functools
 import weakref
 from collections import Counter
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 import torch
 from torch._inductor.fx_passes.memory_estimator import (
